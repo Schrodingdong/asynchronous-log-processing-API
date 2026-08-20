@@ -1,8 +1,10 @@
 import express, { type Express, type Request, type Response } from 'express';
 import multer from 'multer';
-import minioClient from './minioClient';
+import minioClient from './clients/minioClient';
 import fs from 'node:fs'
-import { prisma } from './prisma';
+import { prisma } from './clients/prisma';
+import { addJob } from './queue';
+import { initializeWorkers } from './workers';
 
 // Express setup
 const app: Express = express();
@@ -18,6 +20,11 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+// Initialize workers
+initializeWorkers();
+
+
+
 const LOG_BUCKET = 'logs';
 
 app.post('/logs', upload.single('logfile'), uploadLog);
@@ -25,13 +32,12 @@ async function uploadLog(req: Request, res: Response) {
   const logfile = req.file;
   if (!logfile) return res.send('No file uploaded.');
 
-
   // Save in minio
   try {
     if (! await minioClient.bucketExists(LOG_BUCKET)) {
       await minioClient.makeBucket(LOG_BUCKET);
     }
-    await minioClient.fPutObject(LOG_BUCKET, logfile.filename, logfile.path);
+    const info = await minioClient.fPutObject(LOG_BUCKET, logfile.filename, logfile.path);
     // Clear in local tmp
     fs.unlink(logfile.path, (err) => {
       if (err) {
@@ -46,17 +52,16 @@ async function uploadLog(req: Request, res: Response) {
   }
 
   // State of processing == Pending
-  await prisma.processingJob.create({
+  const job = await prisma.processingJob.create({
     data: {
       status: "PENDING",
-      statistics: {}
+      statistics: {},
+      logPath: `${LOG_BUCKET}/${logfile.filename}`
     }
   })
+  await addJob(job)
 
-  // Send in a queue for processing
-
-
-  res.send(`File uploaded: ${logfile.filename}`);
+  res.send({ message: `Started processing log file of id: ${job.id}` });
 }
 
 app.get('/jobs', getJobs);

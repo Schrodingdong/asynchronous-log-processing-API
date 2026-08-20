@@ -11,6 +11,7 @@ model ProcessingJob {
   id Int @id @default(autoincrement())
   status String
   statistics Json
+  logPath String
   errors LogError[]
 }
 
