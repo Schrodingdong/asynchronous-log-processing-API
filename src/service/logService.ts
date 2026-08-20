@@ -58,3 +58,15 @@ export async function uploadLog(req: Request, res: Response) {
 export async function getJobs(req: Request, res: Response) {
   res.send(await prisma.processingJob.findMany())
 }
+
+export async function getJob(req: Request<{jobId: number | undefined}>, res: Response) {
+  const jobId = Number(req.params.jobId) ?? -1;
+  const job = await prisma.processingJob.findFirst({
+    where: {id: jobId}
+  })
+  if (!job) return res.status(404);
+  const errors = await prisma.logError.findMany({
+    where: { jobId: job.id }
+  })
+  return res.json({ ...job, errors })
+}

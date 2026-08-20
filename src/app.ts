@@ -1,6 +1,6 @@
 import express, { type Express, type Request, type Response } from 'express';
 import { initializeWorkers } from './workers';
-import { getJobs, uploadLog } from './service/logService';
+import { getJob, getJobs, uploadLog } from './service/logService';
 import { login, register } from './service/authService';
 import { initializeObjectStorage } from './clients/minioClient';
 import { jwtValidation } from './middleware/authMiddleware';
@@ -24,9 +24,8 @@ app.post('/logs',
   idempotencyMiddleware,
   uploadMiddleware.single('logfile'),
   uploadLog);
-app.get('/jobs',
-  jwtValidation,
-  getJobs);
+app.get('/jobs', jwtValidation, getJobs);
+app.get('/jobs/:jobId', jwtValidation, getJob);
 
 app.listen(3000, () => {
   console.log("Express server listening at port 3000...");
