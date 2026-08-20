@@ -1,8 +1,8 @@
+import type { LogError, ProcessingJob } from '../generated/prisma/client';
 import { Job, Worker } from 'bullmq';
 import { QUEUE_NAME } from './queue';
 import IORedis from 'ioredis';
-import { LogError, Prisma, ProcessingJob } from '../generated/prisma/client';
-import minioClient from './clients/minioClient';
+import minioClient, { LOG_BUCKET } from './clients/minioClient';
 import { prisma } from './clients/prisma';
 
 const connection = new IORedis({ maxRetriesPerRequest: null });
@@ -24,7 +24,7 @@ async function handleJob(job: Job) {
         data: { status: "INITIALIZING" },
     })
     const [bucket, filename] = j.logPath.split('/');
-    const logfile = await minioClient.getObject(bucket, filename)
+    const logfile = await minioClient.getObject(bucket ?? LOG_BUCKET, filename ?? "")
 
     // Read file
     const chunks: Buffer[] = []
@@ -41,8 +41,8 @@ async function handleJob(job: Job) {
     const stats: Statistics = { errors: 0, totalLines: 0, warnings: 0 };
     const errors: Omit<LogError, 'id' | 'jobId'>[] = [];
     try {
-        const regex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(\w+)\s+\[([^\]]+)\]\s+([\s\S]*?)(?=^\d{4}-\d{2}-\d{2}T|\s*$)/gm;
-        for (const match of text.matchAll(regex)) {
+      const regex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(\w+)\s+\[([^\]]+)\]\s+([\s\S]*?)(?=^\d{4}-\d{2}-\d{2}T|\s*$)/gm;
+      for (const match of text.matchAll(regex)) {
             const timestamp = match[1];
             const status = match[2];
             const msg = match[4].trim();

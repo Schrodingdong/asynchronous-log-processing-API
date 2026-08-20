@@ -1,5 +1,4 @@
 import { createClient } from "redis";
-import { ProcessingJob } from "../../generated/prisma/client";
 
 const redisClient = createClient();
 await redisClient.connect();

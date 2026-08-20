@@ -13,6 +13,8 @@ model ProcessingJob {
   statistics Json
   logPath String
   errors LogError[]
+  owner User @relation(fields: [ownerId], references: [id])
+  ownerId Int
 }
 
 model LogError {
@@ -21,4 +23,11 @@ model LogError {
   timestamp DateTime
   job ProcessingJob @relation(fields: [jobId], references: [id])
   jobId Int
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  username String
+  password String
+  jobs ProcessingJob[]
 }
