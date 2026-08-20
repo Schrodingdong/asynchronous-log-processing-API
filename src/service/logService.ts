@@ -1,28 +1,16 @@
 import type { Request, Response } from "express";
-import { getJobIdOfIdemKey, isIdemKeyInCache, putIdemKeyForJobId } from '../clients/redis';
+import { putIdemKeyForJobId } from '../clients/redis';
 import { prisma } from '../clients/prisma';
 import minioClient, { LOG_BUCKET } from '../clients/minioClient';
 import fs from 'node:fs'
 import { addJob } from '../queue';
 
 export async function uploadLog(req: Request, res: Response) {
-  const idemKey = req.headers["x-idempotency-key"] as string;
-  if (!idemKey) {
-    return res.status(400).json({ error: "Missing X-Idempotency-Key header." });
+  if (!req.idemKey) {
+    console.error("No idempotency key in the request")
+    return res.status(500);
   }
-  if (await isIdemKeyInCache(idemKey)) {
-    const jobId = await getJobIdOfIdemKey(idemKey);
-    if (!jobId) return res.status(500).json({
-      error: `Job id of the associated idempotency key is ${jobId}`
-    });
-    const job = await prisma.processingJob.findFirst({
-      where: {
-        id: jobId
-      }
-    })
-    return res.json({ job });
-  }
-  await putIdemKeyForJobId(idemKey, -1);
+  await putIdemKeyForJobId(req.idemKey, -1);
 
   const logfile = req.file;
   if (!logfile) return res.send('No file uploaded.');
@@ -62,7 +50,7 @@ export async function uploadLog(req: Request, res: Response) {
     }
   })
   await addJob(job)
-  await putIdemKeyForJobId(idemKey, job.id);
+  await putIdemKeyForJobId(req.idemKey, job.id);
 
   res.send({ job });
 }
