@@ -6,3 +6,18 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model ProcessingJob {
+  id Int @id @default(autoincrement())
+  status String
+  statistics Json
+  errors LogError[]
+}
+
+model LogError {
+  id Int @id @default(autoincrement())
+  message String
+  timestamp DateTime
+  job ProcessingJob @relation(fields: [jobId], references: [id])
+  jobId Int
+}
