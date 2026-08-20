@@ -45,6 +45,7 @@ async function uploadLog(req: Request, res: Response) {
       }
     })
     res.send({ job });
+    return;
   }
   await putIdemKeyForJobId(idemKey, -1);
 
@@ -82,10 +83,7 @@ async function uploadLog(req: Request, res: Response) {
   await addJob(job)
   await putIdemKeyForJobId(idemKey, job.id);
 
-  res.send({
-    message: `Started processing log file of id: ${job.id}`,
-    job
-  });
+  res.send({ job });
 }
 
 app.get('/jobs', getJobs);
