@@ -1,7 +1,7 @@
 import { Job, Worker } from 'bullmq';
 import { QUEUE_NAME } from './queue';
 import IORedis from 'ioredis';
-import { ProcessingJob } from '../generated/prisma/client';
+import { Prisma, ProcessingJob } from '../generated/prisma/client';
 import minioClient from './clients/minioClient';
 import { prisma } from './clients/prisma';
 
@@ -32,10 +32,50 @@ async function handleJob(job: Job) {
         chunks.push(Buffer.from(chunk));
     }
     const text = Buffer.concat(chunks).toString('utf-8');
-    console.log(text)
 
-    await prisma.processingJob.update({
+    const updatedJ = await prisma.processingJob.update({
         where: { id: j.id },
         data: { status: "PROCESSING" },
+    })
+
+
+    const stats: Statistics = {
+        errors: 0,
+        totalLines: 0,
+        warnings: 0
+    };
+    const errors: Prisma.LogErrorCreateManyInput[] = [];
+
+    const regex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(\w+)\s+\[([^\]]+)\]\s+([\s\S]*?)(?=^\d{4}-\d{2}-\d{2}T|\s*$)/gm;
+
+    for (const match of text.matchAll(regex)) {
+        const timestamp = match[1];
+        const status = match[2];
+        const msg = match[4].trim();
+
+        stats.totalLines++;
+        if (status === "ERROR") {
+            stats.errors++;
+            errors.push({
+                jobId: updatedJ.id,
+                message: msg,
+                timestamp: new Date(timestamp)
+            })
+        };
+        if (status === "WARN") stats.warnings++;
+    }
+
+
+    await prisma.processingJob.update({
+        where: {
+            id: j.id
+        },
+        data: {
+            statistics: stats as any,
+            status: "COMPLETED"
+        }
+    })
+    await prisma.logError.createMany({
+        data: errors
     })
 }

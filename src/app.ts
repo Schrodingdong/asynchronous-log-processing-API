@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import { prisma } from './clients/prisma';
 import { addJob } from './queue';
 import { initializeWorkers } from './workers';
+import { getJobIdOfIdemKey, isIdemKeyInCache, putIdemKeyForJobId } from './clients/redis';
 
 // Express setup
 const app: Express = express();
@@ -29,15 +30,34 @@ const LOG_BUCKET = 'logs';
 
 app.post('/logs', upload.single('logfile'), uploadLog);
 async function uploadLog(req: Request, res: Response) {
+  const idemKey = req.headers["x-idempotency-key"] as string;
+  if (!idemKey) {
+    return res.status(400).json({ error: "Missing X-Idempotency-Key header." });
+  }
+  if (await isIdemKeyInCache(idemKey)) {
+    const jobId = await getJobIdOfIdemKey(idemKey);
+    if (!jobId) return res.status(500).json({
+      error: `Job id of the associated idempotency key is ${jobId}`
+    });
+    const job = await prisma.processingJob.findFirst({
+      where: {
+        id: jobId
+      }
+    })
+    res.send({ job });
+  }
+  await putIdemKeyForJobId(idemKey, -1);
+
   const logfile = req.file;
   if (!logfile) return res.send('No file uploaded.');
 
-  // Save in minio
   try {
+    // Save in minio
     if (! await minioClient.bucketExists(LOG_BUCKET)) {
       await minioClient.makeBucket(LOG_BUCKET);
     }
-    const info = await minioClient.fPutObject(LOG_BUCKET, logfile.filename, logfile.path);
+    await minioClient.fPutObject(LOG_BUCKET, logfile.filename, logfile.path);
+
     // Clear in local tmp
     fs.unlink(logfile.path, (err) => {
       if (err) {
@@ -60,8 +80,12 @@ async function uploadLog(req: Request, res: Response) {
     }
   })
   await addJob(job)
+  await putIdemKeyForJobId(idemKey, job.id);
 
-  res.send({ message: `Started processing log file of id: ${job.id}` });
+  res.send({
+    message: `Started processing log file of id: ${job.id}`,
+    job
+  });
 }
 
 app.get('/jobs', getJobs);

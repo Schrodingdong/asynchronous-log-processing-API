@@ -1,5 +1,5 @@
 interface Statistics {
-    totalLines: string,
-    errors: string,
-    warnings: string
+    totalLines: number,
+    errors: number,
+    warnings:  number
 }
